@@ -37,7 +37,6 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("🚀 AI microservice starting up…")
     logger.info("   Model  : %s", os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite"))
-    logger.info("   Service is ready to handle requests.")
     yield
     logger.info("🛑 AI microservice shutting down…")
 

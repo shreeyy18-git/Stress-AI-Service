@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: ai-stress-microservice
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 4 -k uvicorn.workers.UvicornWorker app.main:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash-lite
