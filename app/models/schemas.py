@@ -107,3 +107,15 @@ class DailySummaryResponse(BaseModel):
         ...,
         description="Overall risk trend: stable | increasing | decreasing | volatile",
     )
+# ---------------------------------------------------------------------------
+# /i-need-help (Help Beacon)
+# ---------------------------------------------------------------------------
+
+class HelpBeaconRequest(BaseModel):
+    user_id: str = Field(..., description="Unique user identifier")
+    summary_0_7_days: str = Field(..., description="Summary of the last 0–7 days of chat")
+
+
+class HelpBeaconResponse(BaseModel):
+    user_id: str
+    message: str = Field(..., description="A 2-4 line summary message for friends/family")

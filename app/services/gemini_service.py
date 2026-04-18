@@ -22,12 +22,16 @@ from app.models.schemas import (
     ChatAnalysisResponse,
     DailySummaryRequest,
     DailySummaryResponse,
+    HelpBeaconRequest,
+    HelpBeaconResponse,
 )
 from app.utils.prompts import (
     CHAT_ANALYSIS_SYSTEM_PROMPT,
     CHAT_ANALYSIS_USER_TEMPLATE,
     DAILY_SUMMARY_SYSTEM_PROMPT,
     DAILY_SUMMARY_USER_TEMPLATE,
+    HELP_BEACON_SYSTEM_PROMPT,
+    HELP_BEACON_USER_TEMPLATE,
 )
 
 load_dotenv()
@@ -206,4 +210,33 @@ async def generate_daily_summary(request: DailySummaryRequest) -> DailySummaryRe
         dominant_emotion=data.get("dominant_emotion", "unknown"),
         avg_stress=int(data.get("avg_stress", 0)),
         risk_trend=data.get("risk_trend", "stable"),
+    )
+
+
+async def generate_help_beacon(request: HelpBeaconRequest) -> HelpBeaconResponse:
+    """
+    Generate a 2-4 line message for the user's support system based on a 7-day summary.
+    """
+    if not request.summary_0_7_days:
+        return HelpBeaconResponse(
+            user_id=request.user_id,
+            message="No recent summary available to generate a medical beacon."
+        )
+
+    user_prompt = HELP_BEACON_USER_TEMPLATE.format(
+        summary=request.summary_0_7_days
+    )
+
+    raw = await _call_gemini(HELP_BEACON_SYSTEM_PROMPT, user_prompt)
+    logger.debug("Raw Gemini response (help-beacon): %s", raw)
+
+    try:
+        data = _extract_json(raw)
+    except (ValueError, json.JSONDecodeError) as exc:
+        logger.error("Failed to parse Gemini JSON: %s | Raw: %s", exc, raw)
+        raise ValueError(f"Gemini returned malformed JSON. Detail: {exc}") from exc
+
+    return HelpBeaconResponse(
+        user_id=request.user_id,
+        message=data.get("message", "The user has been going through a challenging period and could use some support right now.")
     )
