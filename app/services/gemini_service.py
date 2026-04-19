@@ -82,21 +82,55 @@ def _format_history(history) -> str:
     return "\n".join(lines)
 
 
+FALLBACK_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",       # Equivalent to Gemini 2 Flash
+    "gemini-2.0-flash-lite",  # Equivalent to Gemini 2 Flash Lite
+    "gemini-1.5-flash",       # Equivalent to Gemini 3 Flash because Gemini 3 does not yet exist in Google GenAI
+    "gemini-1.5-flash-8b",    # Equivalent to Gemini 3.1 Flash Lite because Gemini 3 does not yet exist in Google GenAI 
+]
+
 async def _call_gemini(system_prompt: str, user_prompt: str) -> str:
     """
-    Single entry-point to call the Gemini API asynchronously.
+    Single entry-point to call the Gemini API asynchronously with fallback models and fallback API keys.
     Uses a system instruction + user content pattern.
     """
-    response = await _client.aio.models.generate_content(
-        model=_MODEL,
-        contents=user_prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=system_prompt,
-            temperature=0.4,          # low temp → consistent, reliable JSON
-            max_output_tokens=1024,
-        ),
-    )
-    return response.text
+    models_to_try = [_MODEL] + [m for m in FALLBACK_MODELS if m != _MODEL]
+    
+    api_keys = []
+    for key_name in ["GEMINI_API_KEY", "GEMINI_API_KEY2", "GEMINI_API_KEY3"]:
+        val = os.getenv(key_name)
+        if val:
+            api_keys.append(val)
+            
+    if not api_keys:
+         raise EnvironmentError("No GEMINI_API_KEY environment variables found.")
+    
+    last_exception = None
+    
+    # Try each key, and for each key, try the fallback models if needed.
+    for api_key in api_keys:
+        # Re-initialize the client with the current key
+        client = genai.Client(api_key=api_key)
+        
+        for model_name in models_to_try:
+            try:
+                response = await client.aio.models.generate_content(
+                    model=model_name,
+                    contents=user_prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        temperature=0.4,          # low temp → consistent, reliable JSON
+                        max_output_tokens=1024,
+                    ),
+                )
+                return response.text
+            except Exception as e:
+                logger.warning("Failed with key (ending '%s') and model %s: %s. Switching to fallback...", 
+                               api_key[-4:] if len(api_key)>4 else '...', model_name, e)
+                last_exception = e
+            
+    raise Exception(f"All API keys and fallback models failed. Last error: {last_exception}") from last_exception
 
 
 # ---------------------------------------------------------------------------
