@@ -63,6 +63,14 @@ class ChatAnalysisResponse(BaseModel):
         ...,
         description="True if the situation requires an emergency alert",
     )
+    needs_legal_advice: Optional[bool] = Field(
+        default=False,
+        description="True if the system determined legal advice was needed",
+    )
+    legal_query: Optional[str] = Field(
+        default="",
+        description="The search query used for legal research",
+    )
 
 
 # ---------------------------------------------------------------------------

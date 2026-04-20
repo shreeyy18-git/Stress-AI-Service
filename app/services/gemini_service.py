@@ -196,6 +196,8 @@ async def analyze_message(request: ChatAnalysisRequest) -> ChatAnalysisResponse:
         stress_score=int(data.get("stress_score", 0)),
         response=data.get("response", ""),
         should_alert=bool(data.get("should_alert", False)),
+        needs_legal_advice=bool(data.get("needs_legal_advice", False)),
+        legal_query=data.get("legal_query", ""),
     )
 
 

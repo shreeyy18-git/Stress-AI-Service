@@ -19,6 +19,7 @@ class AgentState(TypedDict):
     messages: Annotated[List[BaseMessage], add_messages]
     user_info: str
     memory_summary: str
+    legal_context: Optional[str] = ""
 
 # ---------------------------------------------------------------------------
 # Graph Logic
@@ -37,7 +38,7 @@ FALLBACK_MODELS = [
 def create_agent():
     async def call_model(state: AgentState):
         prompt = ChatPromptTemplate.from_messages([
-            ("system", CHAT_ANALYSIS_SYSTEM_PROMPT + "\n\nUser Demographics:\n{user_info}\n\nUser Background:\n{memory_summary}"),
+            ("system", CHAT_ANALYSIS_SYSTEM_PROMPT + "\n\nUser Demographics:\n{user_info}\n\nUser Background:\n{memory_summary}\n\nLegal Context:\n{legal_context}"),
             MessagesPlaceholder(variable_name="messages"),
         ])
         
@@ -71,7 +72,8 @@ def create_agent():
                     response = await chain.ainvoke({
                         "messages": state["messages"],
                         "user_info": state["user_info"],
-                        "memory_summary": state["memory_summary"]
+                        "memory_summary": state["memory_summary"],
+                        "legal_context": state.get("legal_context") or "No legal context provided yet."
                     })
                     
                     return {"messages": [response]}
@@ -86,12 +88,60 @@ def create_agent():
         
         return {"messages": []}
 
+    from app.services.kanoon_service import search_legal_context
+    import json
+    import re
+
+    def _extract_json_from_msg(content: str):
+        cleaned = re.sub(r"```(?:json)?", "", content).strip()
+        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+        if not match:
+            return {}
+        try:
+            return json.loads(match.group())
+        except:
+            return {}
+
+    async def legal_research(state: AgentState):
+        """Node that calls Indian Kanoon if signaled."""
+        last_msg = state["messages"][-1].content
+        data = _extract_json_from_msg(last_msg)
+        query = data.get("legal_query", "indian law")
+        
+        print(f"--- TRIGGERING LEGAL RESEARCH: {query} ---")
+        context = await search_legal_context(query)
+        
+        return {"legal_context": context}
+
+    def should_search_laws(state: AgentState):
+        """Conditional edge logic."""
+        last_msg = state["messages"][-1].content
+        data = _extract_json_from_msg(last_msg)
+        
+        # Only search if triggered AND we haven't already fetched context
+        if data.get("needs_legal_advice") is True and not state.get("legal_context"):
+            return "research"
+        return "end"
+
     # Build the graph
     workflow = StateGraph(AgentState)
+    
     workflow.add_node("agent", call_model)
-    workflow.add_edge(START, "agent")
+    workflow.add_node("research", legal_research)
 
-    workflow.add_edge("agent", END)
+    workflow.add_edge(START, "agent")
+    
+    workflow.add_conditional_edges(
+        "agent",
+        should_search_laws,
+        {
+            "research": "research",
+            "end": END
+        }
+    )
+
+    # After research, go back to agent for a final refined response
+    workflow.add_edge("research", "agent")
 
     # Add memory persistence
     checkpointer = MemorySaver()
