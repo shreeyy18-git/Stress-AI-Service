@@ -30,6 +30,7 @@ from app.utils.prompts import (
     CHAT_ANALYSIS_USER_TEMPLATE,
     DAILY_SUMMARY_SYSTEM_PROMPT,
     DAILY_SUMMARY_USER_TEMPLATE,
+    DAILY_SUMMARY_FRESH_USER_TEMPLATE,
     HELP_BEACON_SYSTEM_PROMPT,
     HELP_BEACON_USER_TEMPLATE,
 )
@@ -232,21 +233,32 @@ async def generate_daily_summary(request: DailySummaryRequest) -> DailySummaryRe
         lines.append(f"{i}. {label}{ts}: {msg.content}")
     messages_text = "\n".join(lines)
 
-    # Format old summaries for prompt context (read-only reference for AI)
-    if old_summary:
+    # -----------------------------------------------------------------------
+    # BRANCH A: No old summary — fresh start, first day of tracking
+    # Use a clean focused prompt with no history context
+    # -----------------------------------------------------------------------
+    if not old_summary:
+        logger.info("Daily summary: no old summary found for user %s — using fresh-start prompt.", request.user_id)
+        user_prompt = DAILY_SUMMARY_FRESH_USER_TEMPLATE.format(
+            user_id=request.user_id,
+            date=request.date,
+            messages=messages_text,
+        )
+    # -----------------------------------------------------------------------
+    # BRANCH B: Old summary exists — cumulative mode
+    # Pass previous days as read-only context and append today's new entry
+    # -----------------------------------------------------------------------
+    else:
         old_summary_lines = [
             f"{date_key}: {text}" for date_key, text in sorted(old_summary.items())
         ]
         old_summary_text = "\n\n".join(old_summary_lines)
-    else:
-        old_summary_text = "No previous summaries available."
-
-    user_prompt = DAILY_SUMMARY_USER_TEMPLATE.format(
-        user_id=request.user_id,
-        date=request.date,
-        old_summary_text=old_summary_text,
-        messages=messages_text,
-    )
+        user_prompt = DAILY_SUMMARY_USER_TEMPLATE.format(
+            user_id=request.user_id,
+            date=request.date,
+            old_summary_text=old_summary_text,
+            messages=messages_text,
+        )
 
     raw = await _call_gemini(DAILY_SUMMARY_SYSTEM_PROMPT, user_prompt)
     logger.debug("Raw Gemini response (daily-summary): %s", raw)

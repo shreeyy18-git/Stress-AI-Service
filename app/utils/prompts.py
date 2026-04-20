@@ -121,6 +121,25 @@ Return ONLY this JSON:
   "risk_trend": "<stable|increasing|decreasing|volatile>"
 }}"""
 
+
+# Used when there is NO old summary (fresh start — first day of tracking)
+DAILY_SUMMARY_FRESH_USER_TEMPLATE = """User ID: {user_id}
+Today's Date: {date}
+
+This is the user's FIRST day of emotional tracking. There is no previous history.
+
+Today's Messages:
+{messages}
+
+Based solely on today's conversation, write a comprehensive 100-200 word summary.
+Return ONLY this JSON:
+{{
+  "today_summary": "<100-200 word narrative summary of today's emotional state, stress patterns, risk indicators, and key moments>",
+  "dominant_emotion": "<single emotion>",
+  "avg_stress": <0-100>,
+  "risk_trend": "<stable|increasing|decreasing|volatile>"
+}}"""
+
 # ---------------------------------------------------------------------------
 # /i-need-help — Help Beacon for friends/family
 # ---------------------------------------------------------------------------
