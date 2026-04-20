@@ -4,7 +4,7 @@ Pydantic models for request / response validation.
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -81,27 +81,35 @@ class DailyMessage(BaseModel):
 
 class DailySummaryRequest(BaseModel):
     user_id: str = Field(..., description="Unique user identifier")
+    date: str = Field(
+        ...,
+        description="Date of today's chat in YYYY-MM-DD format (used as the new timestamp key)",
+    )
     messages: List[DailyMessage] = Field(
         ...,
         description="All user messages recorded for the day",
+    )
+    old_summary: Optional[Dict[str, str]] = Field(
+        default={},
+        description="Previous cumulative summary keyed by date (e.g. {'2026-04-18': '...', '2026-04-19': '...'})",
     )
 
 
 class DailySummaryResponse(BaseModel):
     user_id: str
-    summary: str = Field(
+    summary: Dict[str, str] = Field(
         ...,
-        description="Narrative summary of the day's emotional state",
+        description="Cumulative daily summaries keyed by date timestamp (e.g. {'2026-04-18': 'Summary text...'})",
     )
     dominant_emotion: str = Field(
         ...,
-        description="The most frequently detected emotion of the day",
+        description="The most frequently detected emotion of today",
     )
     avg_stress: int = Field(
         ...,
         ge=0,
         le=100,
-        description="Average stress score across all messages",
+        description="Average stress score for today",
     )
     risk_trend: str = Field(
         ...,

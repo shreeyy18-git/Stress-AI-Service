@@ -200,23 +200,31 @@ async def analyze_message(request: ChatAnalysisRequest) -> ChatAnalysisResponse:
 
 async def generate_daily_summary(request: DailySummaryRequest) -> DailySummaryResponse:
     """
-    Produce a daily wellbeing summary for all of a user's messages today.
+    Produce a cumulative daily wellbeing summary with timestamped entries.
 
     Steps:
-      1. Format all messages into the prompt.
-      2. Call Gemini (ONE call).
-      3. Parse JSON and return a DailySummaryResponse.
+      1. Format old_summary (previous days) for context.
+      2. Format today's messages into the prompt.
+      3. Call Gemini (ONE call) to generate today's 100-200 word entry.
+      4. Merge today's entry into the existing summary dict under request.date.
+      5. Return sorted chronological DailySummaryResponse.
     """
+    old_summary = request.old_summary or {}
+
     if not request.messages:
+        # No messages today — preserve old + add empty entry for today
+        updated_summary = dict(old_summary)
+        updated_summary[request.date] = "No messages were recorded for today."
+        updated_summary = dict(sorted(updated_summary.items()))
         return DailySummaryResponse(
             user_id=request.user_id,
-            summary="No messages were recorded for today.",
+            summary=updated_summary,
             dominant_emotion="none",
             avg_stress=0,
             risk_trend="stable",
         )
 
-    # Build a readable transcript
+    # Build a readable transcript of today's messages
     lines = []
     for i, msg in enumerate(request.messages, start=1):
         ts = f" [{msg.timestamp}]" if msg.timestamp else ""
@@ -224,8 +232,19 @@ async def generate_daily_summary(request: DailySummaryRequest) -> DailySummaryRe
         lines.append(f"{i}. {label}{ts}: {msg.content}")
     messages_text = "\n".join(lines)
 
+    # Format old summaries for prompt context (read-only reference for AI)
+    if old_summary:
+        old_summary_lines = [
+            f"{date_key}: {text}" for date_key, text in sorted(old_summary.items())
+        ]
+        old_summary_text = "\n\n".join(old_summary_lines)
+    else:
+        old_summary_text = "No previous summaries available."
+
     user_prompt = DAILY_SUMMARY_USER_TEMPLATE.format(
         user_id=request.user_id,
+        date=request.date,
+        old_summary_text=old_summary_text,
         messages=messages_text,
     )
 
@@ -238,9 +257,14 @@ async def generate_daily_summary(request: DailySummaryRequest) -> DailySummaryRe
         logger.error("Failed to parse Gemini JSON: %s | Raw: %s", exc, raw)
         raise ValueError(f"Gemini returned malformed JSON. Detail: {exc}") from exc
 
+    # Merge today's new entry into the cumulative dict and sort chronologically
+    updated_summary = dict(old_summary)
+    updated_summary[request.date] = data.get("today_summary", "")
+    updated_summary = dict(sorted(updated_summary.items()))
+
     return DailySummaryResponse(
         user_id=request.user_id,
-        summary=data.get("summary", ""),
+        summary=updated_summary,
         dominant_emotion=data.get("dominant_emotion", "unknown"),
         avg_stress=int(data.get("avg_stress", 0)),
         risk_trend=data.get("risk_trend", "stable"),
