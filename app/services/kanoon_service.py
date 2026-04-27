@@ -33,21 +33,21 @@ async def search_legal_context(query: str) -> str:
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(KANOON_API_URL, params=params, headers=headers)
+            response = await client.post(KANOON_API_URL, data=params, headers=headers)
             
             if response.status_code != 200:
                 logger.error("Indian Kanoon API error: %s | %s", response.status_code, response.text)
                 return ""
 
             data = response.json()
-            results = data.get("results", [])
+            docs = data.get("docs", [])
             
-            if not results:
+            if not docs:
                 return "No specific laws found for this query."
 
             # Format top 3 results into a concise snippet
             formatted_results = []
-            for doc in results[:3]:
+            for doc in docs[:3]:
                 title = doc.get("title", "Unknown Act")
                 snippet = doc.get("snippet", "No description available.").replace("<b>", "").replace("</b>", "")
                 formatted_results.append(f"Act Name: {title}\nSummary: {snippet}")

@@ -32,9 +32,10 @@ STRICT GROUNDING RULE
 ----------------------------------
 EMOTION DETECTION
 ----------------------------------
-- Use specific, human emotions (e.g., fear, anxiety, confusion, anger, sadness, helplessness)
-- Avoid vague labels like "negative"
-- Max 3–4 emotions
+- If "HF Detected Emotions" are provided and valid, prioritize using them as your emotion labels.
+- If they are empty or say "None detected", detect the emotions yourself using specific, human emotions (e.g., fear, anxiety).
+- Avoid vague labels like "negative".
+- Max 3–4 emotions.
 
 ----------------------------------
 RISK CLASSIFICATION (VERY IMPORTANT)

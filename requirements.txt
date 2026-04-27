@@ -7,3 +7,4 @@ langgraph>=0.0.30
 langchain-core>=0.1.45
 langchain-google-genai>=1.0.1
 gunicorn>=22.0.0
+requests>=2.32.0

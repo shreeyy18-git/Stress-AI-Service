@@ -20,6 +20,7 @@ class AgentState(TypedDict):
     user_info: str
     memory_summary: str
     legal_context: Optional[str] = ""
+    hf_emotions: Optional[str] = ""
 
 # ---------------------------------------------------------------------------
 # Graph Logic
@@ -38,7 +39,7 @@ FALLBACK_MODELS = [
 def create_agent():
     async def call_model(state: AgentState):
         prompt = ChatPromptTemplate.from_messages([
-            ("system", CHAT_ANALYSIS_SYSTEM_PROMPT + "\n\nUser Demographics:\n{user_info}\n\nUser Background:\n{memory_summary}\n\nLegal Context:\n{legal_context}"),
+            ("system", CHAT_ANALYSIS_SYSTEM_PROMPT + "\n\nUser Demographics:\n{user_info}\n\nUser Background:\n{memory_summary}\n\nLegal Context:\n{legal_context}\n\nHF Detected Emotions:\n{hf_emotions}"),
             MessagesPlaceholder(variable_name="messages"),
         ])
         
@@ -73,9 +74,13 @@ def create_agent():
                         "messages": state["messages"],
                         "user_info": state["user_info"],
                         "memory_summary": state["memory_summary"],
-                        "legal_context": state.get("legal_context") or "No legal context provided yet."
+                        "legal_context": state.get("legal_context") or "No legal context provided yet.",
+                        "hf_emotions": state.get("hf_emotions") or "None detected"
                     })
                     
+                    if not response.content:
+                        raise ValueError("Model returned an empty response (possibly blocked).")
+
                     return {"messages": [response]}
                 except Exception as e:
                     # Log the failure and continue to the next model/key
@@ -84,9 +89,9 @@ def create_agent():
         
         # If all keys and models fail, raise the last exception
         if last_exception:
-            raise Exception(f"All API keys and fallback models failed. Last error: {last_exception}") from last_exception
+            raise Exception(f"All API keys and fallback models failed. Last error: {last_exception}")
         
-        return {"messages": []}
+        raise Exception("Failed to generate response: No exception but no results.")
 
     from app.services.kanoon_service import search_legal_context
     import json
@@ -123,13 +128,32 @@ def create_agent():
             return "research"
         return "end"
 
+    from app.services.emotion_service import detect_emotions
+
+    async def analyze_emotion(state: AgentState):
+        """Node that calls Hugging Face emotion model."""
+        # Only run if not already set (e.g., first pass)
+        if not state.get("hf_emotions"):
+            last_msg = state["messages"][-1].content
+            print(f"--- ANALYZING EMOTION FOR: {last_msg[:50]}... ---")
+            emotions = await detect_emotions(last_msg)
+            if emotions:
+                print(f"--- HF EMOTIONS DETECTED: {emotions} ---")
+                return {"hf_emotions": ", ".join(emotions)}
+            else:
+                print("--- HF EMOTIONS FAILED (Fallback to Gemini) ---")
+                return {"hf_emotions": "None detected (Fallback to Gemini)"}
+        return {}
+
     # Build the graph
     workflow = StateGraph(AgentState)
     
+    workflow.add_node("emotion", analyze_emotion)
     workflow.add_node("agent", call_model)
     workflow.add_node("research", legal_research)
 
-    workflow.add_edge(START, "agent")
+    workflow.add_edge(START, "emotion")
+    workflow.add_edge("emotion", "agent")
     
     workflow.add_conditional_edges(
         "agent",
